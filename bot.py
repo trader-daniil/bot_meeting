@@ -20,13 +20,6 @@ State = Enum('State', [
     'CHOOSING_PERSON',
 ])
 
-MAIN_KEYBOARD = [
-    ['Текущее выступление'],
-    ['Расписание'],
-    ['Пообщаться'],
-    ['Помощь'],
-]
-
 
 def start(update: Update, context: CallbackContext) -> int:
     """Send a message when the command /start is issued."""
@@ -39,16 +32,37 @@ def start(update: Update, context: CallbackContext) -> int:
         ['Расписание'],
         ['Пообщаться'],
         ['Помощь'],
+        ['Задонатить']
     ]
-    reply_markup = ReplyKeyboardMarkup(listener_keyboard)
+
+    speaker_keyboard = listener_keyboard + [['Список вопросов']]
+
+    # organizer_keyboard = [
+    #     ['Расписание'],
+    #     ['Добавить докладчика'],
+    #     ['Изменить программу'],
+    #     ['Оповещение всем'],
+    #     ['Донаты'],
+    # ]
+
+    global main_keyboard
+
+    # if user.role == 'speaker':
+    #     main_keyboard = listener_keyboard
+    # elif user.role == 'organizer':
+    #     main_keyboard = organizer_keyboard
+    # else:
+    #     main_keyboard = listener_keyboard
+
+    main_keyboard = speaker_keyboard  # delete
+
+    reply_markup = ReplyKeyboardMarkup(main_keyboard)
     update.message.reply_text(
         text='Привет! Я бот для проведения митапов! Используй команду /help '
              'или напиши "Помощь" для знакомства с моим функционалом.',
         # через f строку можно вставить название роли на русском после Привет
         reply_markup=reply_markup,
     )
-    # elif user.role == 'speaker':
-    # elif user.role == 'organizer':
 
     return State.CHOOSING
 
@@ -81,7 +95,7 @@ def ask_question(update: Update, context: CallbackContext) -> int:
 def save_question(update: Update, context: CallbackContext) -> int:
     update.message.reply_text(
         text='Ваш вопрос записан',
-        reply_markup=ReplyKeyboardMarkup(MAIN_KEYBOARD),
+        reply_markup=ReplyKeyboardMarkup(main_keyboard),
     )
 
     return State.CHOOSING
@@ -94,7 +108,7 @@ def show_main_keyboard(update: Update, context: CallbackContext) -> int:
     )
     update.message.reply_text(
         text='Выберите из списка действий',
-        reply_markup=ReplyKeyboardMarkup(MAIN_KEYBOARD),
+        reply_markup=ReplyKeyboardMarkup(main_keyboard),
     )
 
     return State.CHOOSING
@@ -106,12 +120,12 @@ def get_help(update: Update, context: CallbackContext) -> int:
         update.message.message_id,
     )
     update.message.reply_text(
-        text='''
-        /now - текущее выступление, задать вопрос
-/schedule - расписание
-/meet - пообщаться
-        ''',
-        reply_markup=ReplyKeyboardMarkup(MAIN_KEYBOARD),
+        text='/now - текущее выступление, задать вопрос\n'
+             '/schedule - расписание\n'
+             '/meet - пообщаться\n'
+             '/help - основные команды\n'
+             '/donate - сделать донат\n',
+        reply_markup=ReplyKeyboardMarkup(main_keyboard),
     )
 
     return State.CHOOSING
@@ -174,7 +188,7 @@ def get_contact(update: Update, context: CallbackContext) -> int:
     )
     update.message.reply_text(
         text='@ник_пользователя',
-        reply_markup=ReplyKeyboardMarkup(MAIN_KEYBOARD),
+        reply_markup=ReplyKeyboardMarkup(main_keyboard),
     )
 
     return State.CHOOSING
@@ -187,7 +201,7 @@ def get_schedule(update: Update, context: CallbackContext) -> int:
     )
     update.message.reply_text(
         text='Тут расписание',
-        reply_markup=ReplyKeyboardMarkup(MAIN_KEYBOARD),
+        reply_markup=ReplyKeyboardMarkup(main_keyboard),
     )
 
     return State.CHOOSING
@@ -200,6 +214,25 @@ def about_meetings(update: Update, context: CallbackContext) -> int:
     )
 
     return State.STARTING_FORM
+
+
+def get_questions(update: Update, context: CallbackContext) -> int:
+    context.bot.delete_message(
+        update.message.chat.id,
+        update.message.message_id,
+    )
+    update.message.reply_text(
+        text='Тут список контактов или вопросов',
+        reply_markup=ReplyKeyboardMarkup(main_keyboard),
+    )
+
+    return State.CHOOSING
+
+
+def donate(update: Update, context: CallbackContext) -> int:
+    pass
+
+    return State.CHOOSING
 
 
 def cancel(update: Update, context: CallbackContext) -> int:
@@ -227,6 +260,15 @@ def main() -> None:
 
                 MessageHandler(Filters.regex(r'Расписание'), get_schedule),
                 CommandHandler('schedule', get_schedule),
+
+                MessageHandler(Filters.regex(r'Задонатить'), donate),
+                CommandHandler('donate', donate),
+
+                MessageHandler(
+                    Filters.regex(r'Список вопросов'),
+                    get_questions,
+                ),
+                CommandHandler('questions', get_questions),
             ],
             State.ASKING_QUESTION: [
                 MessageHandler(Filters.regex(r'Назад'), show_main_keyboard),
