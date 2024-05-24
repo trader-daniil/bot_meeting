@@ -263,6 +263,12 @@ def main() -> None:
 
                 MessageHandler(Filters.regex(r'Задонатить'), donate),
                 CommandHandler('donate', donate),
+
+                MessageHandler(
+                    Filters.regex(r'Список вопросов'),
+                    get_questions,
+                ),
+                CommandHandler('questions', get_questions),
             ],
             State.ASKING_QUESTION: [
                 MessageHandler(Filters.regex(r'Назад'), show_main_keyboard),
