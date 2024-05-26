@@ -43,6 +43,7 @@ def get_current_speach(redis_con):
     )
     return current_speach
 
+
 def create_question(user_id, question, redis_con):
     """Получим текущее выступление и зададим вопрос спикеру
         Используем тип данных SET, ключ это <username спикера>_questions
@@ -65,6 +66,61 @@ def get_speaker_questions(speaker_id, redis_con):
     return questions
 
 
+def create_questionnaire(user_id, redis_con, about_me):
+    """Создадим анкеты пользовтеля
+        Испольщуем тип данных HASH."""
+    redis_con.hset(
+        f'{user_id}_questionnaire',
+        'tg_id',
+        user_id,
+    )
+    redis_con.hset(
+        f'{user_id}_questionnaire',
+        'info',
+        about_me,
+    )
+
+
+def get_user_questionnaire(user_id, redis_con):
+    """Получим анкету пользователя."""
+    if not redis_con.exists(f'{user_id}_questionnaire'):
+        return None
+    return {
+        'tg_id': user_id,
+        'user_info': redis_con.hget(
+            f'{user_id}_questionnaire',
+            'info',
+        ).decode('utf-8')
+    }
+
+
+def get_schedule(redis_con):
+    """Получим время начала текущего доклада, затем следующие доклады."""
+    current_speach_time = redis_con.get('current_speach').decode('utf-8')
+    next_speach = {}
+    current_speach_time = datetime.datetime.strptime(
+        current_speach_time,
+        '%H:%M:%S'
+    ).time()
+    schedule = redis_con.hgetall('speach_time')
+    for speach_time, speaker in schedule.items():
+        speach_time_formated = datetime.datetime.strptime(
+            speach_time.decode('utf-8'),
+            '%H:%M:%S'
+        ).time()
+        if speach_time_formated> current_speach_time:
+            next_speach[speach_time.decode('utf-8')] = speaker.decode('utf-8')
+    
+    return next_speach
+
+
+def remove_speaker(time_to_delete, redis_con):
+    redis_con.hdel(
+        'speach_time',
+        time_to_delete,
+    )
+
+
 def main():
     load_dotenv()
     tg_bot_token = os.getenv('TG_BOT_TOKEN')
@@ -73,11 +129,6 @@ def main():
         port=os.getenv('DB_PORT'),
         db=os.getenv('DB_NUMBER'),
     )
-    print(get_speaker_questions(
-        speaker_id='Daniil',
-        redis_con=r
-    ))
-    
 
     
 if __name__ == '__main__':
