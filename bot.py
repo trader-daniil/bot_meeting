@@ -18,6 +18,12 @@ State = Enum('State', [
     'ASKING_AGE',
     'ASKING_LANGUAGE',
     'CHOOSING_PERSON',
+    'CHOOSING_SPEAKER',
+    'CHOOSING_MEETING_TIME',
+    'EDITING_MEETING',
+    'EDITING_THEME',
+    'EDITING_SCHEDULE',
+    'SEND_NOTIFICATION',
 ])
 
 
@@ -37,13 +43,13 @@ def start(update: Update, context: CallbackContext) -> int:
 
     speaker_keyboard = listener_keyboard + [['Список вопросов']]
 
-    # organizer_keyboard = [
-    #     ['Расписание'],
-    #     ['Добавить докладчика'],
-    #     ['Изменить программу'],
-    #     ['Оповещение всем'],
-    #     ['Донаты'],
-    # ]
+    organizer_keyboard = [
+        ['Расписание'],
+        ['Добавить докладчика'],
+        ['Изменить программу'],
+        ['Оповещение всем'],
+        ['Донаты'],
+    ]
 
     global main_keyboard
 
@@ -54,7 +60,7 @@ def start(update: Update, context: CallbackContext) -> int:
     # else:
     #     main_keyboard = listener_keyboard
 
-    main_keyboard = speaker_keyboard  # delete
+    main_keyboard = organizer_keyboard  # delete
 
     reply_markup = ReplyKeyboardMarkup(main_keyboard)
     update.message.reply_text(
@@ -235,6 +241,132 @@ def donate(update: Update, context: CallbackContext) -> int:
     return State.CHOOSING
 
 
+def choose_speaker(update: Update, context: CallbackContext) -> int:
+    update.message.reply_text(
+        text='Выберите докладчика',
+        reply_markup=ReplyKeyboardMarkup(
+            [[f'speaker{i}'] for i in range(5)]
+        )
+    )
+
+    return State.CHOOSING_SPEAKER
+
+
+def choose_meeting_time(update: Update, context: CallbackContext) -> int:
+    # username = update.message.text
+    update.message.reply_text(
+        text='Выберите доступное время',
+        #  список кнопок со свободным временем
+        reply_markup=ReplyKeyboardMarkup(
+            [[f'{i}:00'] for i in range(9, 19)]
+        ),
+    )
+
+    return State.CHOOSING_MEETING_TIME
+
+
+def save_meeting(update: Update, context: CallbackContext) -> int:
+    # meeting_time = update.message.text
+    update.message.reply_text(
+        text='Докладчик записан',
+        reply_markup=ReplyKeyboardMarkup(main_keyboard),
+    )
+
+    return State.CHOOSING
+
+
+def edit_schedule(update: Update, context: CallbackContext) -> int:
+    update.message.reply_text(
+        text='Выберите доклад',
+        # cписок докладов
+        reply_markup=ReplyKeyboardMarkup(
+            [[f'{i}:00 - Тема доклада'] for i in range(9, 19)]
+        ),
+    )
+
+    return State.EDITING_SCHEDULE
+
+
+def edit_meeting(update: Update, context: CallbackContext) -> int:
+    #  перехват времени или названия доклада
+    target = update.message.text
+    #  сохранить например в bot_data или в redis
+    context.bot_data['edit_meeting'] = target
+
+    update.message.reply_text(
+        text='Выберите редактировать или удалить докдад из расписания',
+        reply_markup=ReplyKeyboardMarkup([
+            ['Редактировать'],
+            ['Удалить'],
+        ]),
+    )
+
+    return State.EDITING_MEETING
+
+
+def edit_theme(update: Update, context: CallbackContext) -> int:
+    context.bot.delete_message(
+        update.message.chat.id,
+        update.message.message_id,
+    )
+    update.message.reply_text(
+        text='Введите новую тему выступления',
+        reply_markup=ReplyKeyboardMarkup([['Назад']]),
+    )
+
+    return State.EDITING_THEME
+
+
+def save_theme(update: Update, context: CallbackContext) -> int:
+    new_theme = update.message.text
+    #  выступление тянем из context.bot_data
+    update.message.reply_text(
+        text='Тема выступления сохранена',
+        reply_markup=ReplyKeyboardMarkup(main_keyboard),
+    )
+
+    return State.CHOOSING
+
+
+def delete_meeting(update: Update, context: CallbackContext) -> int:
+    # удаление выступления из расписания
+    # выступление тянем из context.bot_data
+    update.message.reply_text(
+        text='Выступление удалено',
+        reply_markup=ReplyKeyboardMarkup(main_keyboard),
+    )
+
+    return State.CHOOSING
+
+
+def get_notification(update: Update, context: CallbackContext) -> int:
+    update.message.reply_text(
+        text='Введите текст оповещения',
+        reply_markup=ReplyKeyboardMarkup([['Назад']]),
+    )
+
+    return State.SEND_NOTIFICATION
+
+
+def send_notification(update: Update, context: CallbackContext) -> int:
+    #  отправка сообщения всем
+    update.message.reply_text(
+        text='Оповещение отправлено',
+        reply_markup=ReplyKeyboardMarkup(main_keyboard),
+    )
+
+    return State.CHOOSING
+
+
+def get_donations(update: Update, context: CallbackContext) -> int:
+    update.message.reply_text(
+        text='@username - Сумма руб.',
+        reply_markup=ReplyKeyboardMarkup(main_keyboard),
+    )
+
+    return State.CHOOSING
+
+
 def cancel(update: Update, context: CallbackContext) -> int:
     return ConversationHandler.END
 
@@ -269,6 +401,23 @@ def main() -> None:
                     get_questions,
                 ),
                 CommandHandler('questions', get_questions),
+
+                MessageHandler(
+                    Filters.regex(r'Добавить докладчика'),
+                    choose_speaker,
+                ),
+
+                MessageHandler(
+                    Filters.regex(r'Изменить программу'),
+                    edit_schedule,
+                ),
+
+                MessageHandler(
+                    Filters.regex(r'Оповещение всем'),
+                    get_notification,
+                ),
+
+                MessageHandler(Filters.regex(r'Донаты'), get_donations),
             ],
             State.ASKING_QUESTION: [
                 MessageHandler(Filters.regex(r'Назад'), show_main_keyboard),
@@ -301,6 +450,30 @@ def main() -> None:
                 MessageHandler(Filters.regex(r'Назад'), show_main_keyboard),
                 MessageHandler(Filters.regex(r'Выбрать'), get_contact),
                 MessageHandler(Filters.regex(r'Следующий'), get_person),
+            ],
+            State.CHOOSING_SPEAKER: [
+                MessageHandler(Filters.regex(r'Назад'), show_main_keyboard),
+                MessageHandler(Filters.text, choose_meeting_time)
+            ],
+            State.CHOOSING_MEETING_TIME: [
+                MessageHandler(Filters.regex(r'Назад'), show_main_keyboard),
+                MessageHandler(Filters.text, save_meeting)
+            ],
+            State.EDITING_SCHEDULE: [
+                MessageHandler(Filters.regex(r'Назад'), show_main_keyboard),
+                MessageHandler(Filters.text, edit_meeting)
+            ],
+            State.EDITING_MEETING: [
+                MessageHandler(Filters.regex(r'Редактировать'), edit_theme),
+                MessageHandler(Filters.regex(r'Удалить'), delete_meeting),
+            ],
+            State.EDITING_THEME: [
+                MessageHandler(Filters.regex(r'Назад'), show_main_keyboard),
+                MessageHandler(Filters.text, save_theme)
+            ],
+            State.SEND_NOTIFICATION: [
+                MessageHandler(Filters.regex(r'Назад'), show_main_keyboard),
+                MessageHandler(Filters.text, send_notification)
             ],
         },
         fallbacks=[CommandHandler('cancel', cancel)]
