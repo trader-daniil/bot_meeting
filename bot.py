@@ -2,10 +2,16 @@ import logging
 
 from enum import Enum
 from environs import Env
-from telegram import ReplyKeyboardMarkup, Update
+from telegram import ReplyKeyboardMarkup, Update, LabeledPrice
 from telegram.ext import (Updater, CommandHandler, MessageHandler, Filters,
-                          ConversationHandler, CallbackContext)
+                          ConversationHandler, CallbackContext,
+                          PreCheckoutQueryHandler, TypeHandler)
 
+
+env = Env()
+env.read_env()
+
+updater = Updater(env.str('TELEGRAM_BOT_TOKEN'))
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +30,9 @@ State = Enum('State', [
     'EDITING_THEME',
     'EDITING_SCHEDULE',
     'SEND_NOTIFICATION',
+    'GETTING_DONATE',
+    'SENDING_INVOICE',
+    'GOT_PAYMENT',
 ])
 
 
@@ -60,7 +69,7 @@ def start(update: Update, context: CallbackContext) -> int:
     # else:
     #     main_keyboard = listener_keyboard
 
-    main_keyboard = organizer_keyboard  # delete
+    main_keyboard = speaker_keyboard  # delete
 
     reply_markup = ReplyKeyboardMarkup(main_keyboard)
     update.message.reply_text(
@@ -236,9 +245,46 @@ def get_questions(update: Update, context: CallbackContext) -> int:
 
 
 def donate(update: Update, context: CallbackContext) -> int:
-    pass
+    update.message.reply_text(
+        text='Введите сумму доната',
+        reply_markup=ReplyKeyboardMarkup([['Назад']]),
+    )
 
-    return State.CHOOSING
+    return State.GETTING_DONATE
+
+
+def send_invoice(update: Update, context: CallbackContext) -> int:
+    price = int(update.message.text)
+
+    context.bot.send_invoice(
+        chat_id=update.message.chat_id,
+        title='Донат',
+        description='Донат организатору',
+        payload='invoice_payload_test',
+        provider_token=env.str('PAYMENT_TG_TOKEN'),
+        currency='rub',
+        prices=[LabeledPrice(label='Донат', amount=price * 100)],
+    )
+
+    return State.SENDING_INVOICE
+
+
+def checkout(pre_checkout_query):
+    updater.bot.answer_pre_checkout_query(
+        pre_checkout_query.id,
+        ok=True,
+        error_message='Ошибка оплаты'
+    )
+
+    return State.GOT_PAYMENT
+
+
+def got_payment(message):
+    updater.bot.send_message(
+        message.chat.id,
+        'Успешная оплата',
+        parse_mode='Markdown'
+    )
 
 
 def choose_speaker(update: Update, context: CallbackContext) -> int:
@@ -475,6 +521,16 @@ def main() -> None:
                 MessageHandler(Filters.regex(r'Назад'), show_main_keyboard),
                 MessageHandler(Filters.text, send_notification)
             ],
+            State.GETTING_DONATE: [
+                MessageHandler(Filters.regex(r'Назад'), show_main_keyboard),
+                MessageHandler(Filters.text, send_invoice)
+            ],
+            State.SENDING_INVOICE: [
+                PreCheckoutQueryHandler(lambda query: True, checkout),
+            ],
+            State.GOT_PAYMENT: [
+                TypeHandler('successful_payment', got_payment),
+            ]
         },
         fallbacks=[CommandHandler('cancel', cancel)]
     )
@@ -491,8 +547,5 @@ if __name__ == '__main__':
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         level=logging.INFO,
     )
-
-    env = Env()
-    env.read_env()
 
     main()
