@@ -6,6 +6,10 @@ from telegram import ReplyKeyboardMarkup, Update, LabeledPrice
 from telegram.ext import (Updater, CommandHandler, MessageHandler, Filters,
                           ConversationHandler, CallbackContext,
                           PreCheckoutQueryHandler, TypeHandler)
+                          ConversationHandler, CallbackContext)
+from data import get_user_status, get_current_speach
+from functools import partial
+import redis
 
 
 env = Env()
@@ -36,7 +40,7 @@ State = Enum('State', [
 ])
 
 
-def start(update: Update, context: CallbackContext) -> int:
+def start(update: Update, context: CallbackContext, redis_con) -> int:
     """Send a message when the command /start is issued."""
 
     # через update.message.from_user.id получаем роль пользователя
@@ -60,17 +64,20 @@ def start(update: Update, context: CallbackContext) -> int:
         ['Донаты'],
     ]
 
+    user = update.message.from_user
+
     global main_keyboard
+    user_role = get_user_status(
+        user_id=user.id,
+        redis_con=redis_con,
+    )
 
-    # if user.role == 'speaker':
-    #     main_keyboard = listener_keyboard
-    # elif user.role == 'organizer':
-    #     main_keyboard = organizer_keyboard
-    # else:
-    #     main_keyboard = listener_keyboard
-
-    main_keyboard = speaker_keyboard  # delete
-
+    if user_role == 'speaker':
+        main_keyboard = listener_keyboard
+    elif user_role == 'organizer':
+        main_keyboard = organizer_keyboard
+    else:
+        main_keyboard = listener_keyboard
     reply_markup = ReplyKeyboardMarkup(main_keyboard)
     update.message.reply_text(
         text='Привет! Я бот для проведения митапов! Используй команду /help '
@@ -82,12 +89,13 @@ def start(update: Update, context: CallbackContext) -> int:
     return State.CHOOSING
 
 
-def now(update: Update, context: CallbackContext) -> int:
+def now(update: Update, context: CallbackContext, redis_con) -> int:
     """Show current meetup."""
     now_keyboard = [['Задать вопрос'], ['Назад'],]
     reply_markup = ReplyKeyboardMarkup(now_keyboard)
+    current_speach = get_current_speach(redis_con=redis_con)
     update.message.reply_text(
-        text='Название доклада - Имя докладчика',
+        text=f'{current_speach["speach_info"]} - {current_speach["speaker"]}',
         reply_markup=reply_markup,
     )
 
@@ -420,16 +428,37 @@ def cancel(update: Update, context: CallbackContext) -> int:
 def main() -> None:
     """Start the bot."""
     updater = Updater(env.str('TELEGRAM_BOT_TOKEN'))
+    r = redis.Redis(
+        host=env.str('DB_HOST'),
+        port=env.str('DB_PORT'),
+        db=env.str('DB_NUMBER'),
+    )
 
     dispatcher = updater.dispatcher
 
     conv_handler = ConversationHandler(
-        entry_points=[CommandHandler('start', start)],
+        entry_points=[CommandHandler(
+            'start',
+            partial(
+                start,
+                redis_con=r,
+            ),
+        )],
         states={
             State.CHOOSING: [
-                MessageHandler(Filters.regex(r'Текущее выступление'), now),
-                CommandHandler('now', now),
-
+                MessageHandler(
+                    Filters.regex(r'Текущее выступление'),
+                    partial(
+                        now,
+                        redis_con=r,
+                    ),),
+                CommandHandler(
+                    'now',
+                    partial(
+                        now, 
+                        redis_con=r,
+                    ),
+                ),
                 MessageHandler(Filters.regex(r'Помощь'), get_help),
                 CommandHandler('help', get_help),
 
