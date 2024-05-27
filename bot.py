@@ -5,6 +5,8 @@ from environs import Env
 from telegram import ReplyKeyboardMarkup, Update
 from telegram.ext import (Updater, CommandHandler, MessageHandler, Filters,
                           ConversationHandler, CallbackContext)
+from data import get_user_status
+from functools import partial
 
 
 logger = logging.getLogger(__name__)
@@ -51,7 +53,10 @@ def start(update: Update, context: CallbackContext) -> int:
         ['Донаты'],
     ]
 
+    user = update.message.from_user
+
     global main_keyboard
+    role = 
 
     # if user.role == 'speaker':
     #     main_keyboard = listener_keyboard
