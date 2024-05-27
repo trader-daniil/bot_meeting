@@ -5,7 +5,7 @@ from environs import Env
 from telegram import ReplyKeyboardMarkup, Update
 from telegram.ext import (Updater, CommandHandler, MessageHandler, Filters,
                           ConversationHandler, CallbackContext)
-from data import get_user_status
+from data import get_user_status, get_current_speach
 from functools import partial
 import redis
 
@@ -79,12 +79,13 @@ def start(update: Update, context: CallbackContext, redis_con) -> int:
     return State.CHOOSING
 
 
-def now(update: Update, context: CallbackContext) -> int:
+def now(update: Update, context: CallbackContext, redis_con) -> int:
     """Show current meetup."""
     now_keyboard = [['Задать вопрос'], ['Назад'],]
     reply_markup = ReplyKeyboardMarkup(now_keyboard)
+    current_speach = get_current_speach(redis_con=redis_con)
     update.message.reply_text(
-        text='Название доклада - Имя докладчика',
+        text=f'{current_speach["speach_info"]} - {current_speach["speaker"]}',
         reply_markup=reply_markup,
     )
 
@@ -398,9 +399,19 @@ def main() -> None:
         )],
         states={
             State.CHOOSING: [
-                MessageHandler(Filters.regex(r'Текущее выступление'), now),
-                CommandHandler('now', now),
-
+                MessageHandler(
+                    Filters.regex(r'Текущее выступление'),
+                    partial(
+                        now,
+                        redis_con=r,
+                    ),),
+                CommandHandler(
+                    'now',
+                    partial(
+                        now, 
+                        redis_con=r,
+                    ),
+                ),
                 MessageHandler(Filters.regex(r'Помощь'), get_help),
                 CommandHandler('help', get_help),
 

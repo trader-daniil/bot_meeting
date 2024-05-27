@@ -17,7 +17,7 @@ def get_user_status(user_id, redis_con):
     return 'listener'
 
 
-def add_speaker(speaker_name, speach_time, redis_con):
+def add_speaker(speaker_name, speach_time, speach_info, redis_con):
     """Добавляем пользователя по его ID в TG как списка
         Используем тип данных HASH ключ - время в формате HH:MM:SS значение - id спикера"""
     redis_con.hset(
@@ -25,6 +25,11 @@ def add_speaker(speaker_name, speach_time, redis_con):
         speach_time,
         speaker_name,
     )
+    redis_con.set(
+        f'{speach_time}_info',
+        f'{speaker_name}: {speach_info}',
+    )
+
 
 def get_speaker_questions(speaker_name, redis_con):
     """Получим все контакты тех, кто хочет задать вопрос докладчику
@@ -33,16 +38,33 @@ def get_speaker_questions(speaker_name, redis_con):
     return contacts
 
 
+def get_speach_data(redis_con, speach_time):
+    """Получим подробную информацию о выступлении
+        Используем тип key value, где key время начала выступления
+        и value это подробная информация о выступлении."""
+    speach_info = redis_con.get(f'{speach_time}_info')
+    return speach_info.decode('utf-8')
+
+
 def get_current_speach(redis_con):
     """Получим текущее выступление
         Используем тип данных key-value, где value это время начала выступления
-        Затем обращаемся к этому времени и получаем подробную информацию о выступлении"""
+        Затем обращаемся к этому времени и получаем подробную информацию о выступлении."""
     speach_start_time = redis_con.get('current_speach')
     current_speach = redis_con.hget(
         'speach_time',
         speach_start_time,
     )
-    return current_speach
+    info = get_speach_data(
+        redis_con=redis_con,
+        speach_time=speach_start_time.decode('utf-8'),
+    )
+    speach_info = {
+        'speaker': current_speach.decode('utf-8'),
+        'speach_info': info
+    }
+    return speach_info
+
 
 
 def create_question(user_id, question, redis_con):
@@ -130,6 +152,7 @@ def main():
         port=os.getenv('DB_PORT'),
         db=os.getenv('DB_NUMBER'),
     )
+    print(get_speach_data(redis_con=r, speach_time='22:22:00'))
 
     
 if __name__ == '__main__':
