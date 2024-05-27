@@ -9,6 +9,7 @@ from telegram.ext import (Updater, CommandHandler, MessageHandler, Filters,
                           ConversationHandler, CallbackContext)
 from data import get_user_status
 from functools import partial
+import redis
 
 
 env = Env()
@@ -39,7 +40,7 @@ State = Enum('State', [
 ])
 
 
-def start(update: Update, context: CallbackContext) -> int:
+def start(update: Update, context: CallbackContext, redis_con) -> int:
     """Send a message when the command /start is issued."""
 
     # через update.message.from_user.id получаем роль пользователя
@@ -66,17 +67,17 @@ def start(update: Update, context: CallbackContext) -> int:
     user = update.message.from_user
 
     global main_keyboard
-    role = 
+    user_role = get_user_status(
+        user_id=user.id,
+        redis_con=redis_con,
+    )
 
-    # if user.role == 'speaker':
-    #     main_keyboard = listener_keyboard
-    # elif user.role == 'organizer':
-    #     main_keyboard = organizer_keyboard
-    # else:
-    #     main_keyboard = listener_keyboard
-
-    main_keyboard = speaker_keyboard  # delete
-
+    if user_role == 'speaker':
+        main_keyboard = listener_keyboard
+    elif user_role == 'organizer':
+        main_keyboard = organizer_keyboard
+    else:
+        main_keyboard = listener_keyboard
     reply_markup = ReplyKeyboardMarkup(main_keyboard)
     update.message.reply_text(
         text='Привет! Я бот для проведения митапов! Используй команду /help '
@@ -426,11 +427,22 @@ def cancel(update: Update, context: CallbackContext) -> int:
 def main() -> None:
     """Start the bot."""
     updater = Updater(env.str('TELEGRAM_BOT_TOKEN'))
+    r = redis.Redis(
+        host=env.str('DB_HOST'),
+        port=env.str('DB_PORT'),
+        db=env.str('DB_NUMBER'),
+    )
 
     dispatcher = updater.dispatcher
 
     conv_handler = ConversationHandler(
-        entry_points=[CommandHandler('start', start)],
+        entry_points=[CommandHandler(
+            'start',
+            partial(
+                start,
+                redis_con=r,
+            ),
+        )],
         states={
             State.CHOOSING: [
                 MessageHandler(Filters.regex(r'Текущее выступление'), now),
