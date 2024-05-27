@@ -9,11 +9,12 @@ def get_user_status(user_id, redis_con):
         Используем структуру данных SET."""
     speakers_ids = redis_con.smembers('speakers')
     orginizers_ids = redis_con.smembers('organizers')
+    user_id = str.encode(str(user_id))
     if user_id in speakers_ids:
-        return 'Спикер'
+        return 'speaker'
     elif user_id in orginizers_ids:
-        return 'Организатор'
-    return 'Слушатель'
+        return 'organizer'
+    return 'listener'
 
 
 def add_speaker(speaker_name, speach_time, redis_con):
