@@ -6,6 +6,9 @@ from telegram import ReplyKeyboardMarkup, Update, LabeledPrice
 from telegram.ext import (Updater, CommandHandler, MessageHandler, Filters,
                           ConversationHandler, CallbackContext,
                           PreCheckoutQueryHandler, TypeHandler)
+                          ConversationHandler, CallbackContext)
+from data import get_user_status
+from functools import partial
 
 
 env = Env()
@@ -60,7 +63,10 @@ def start(update: Update, context: CallbackContext) -> int:
         ['Донаты'],
     ]
 
+    user = update.message.from_user
+
     global main_keyboard
+    role = 
 
     # if user.role == 'speaker':
     #     main_keyboard = listener_keyboard
