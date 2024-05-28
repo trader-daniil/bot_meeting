@@ -16,6 +16,24 @@ def get_user_status(user_id, redis_con):
         return 'organizer'
     return 'listener'
 
+def get_users_by_language(language, redis_con):
+    """Получим всех пользователей, которые используют выбранных язык
+        Используем тип данных SET."""
+    users_ids = redis_con.smembers(language.lower())
+    return users_ids
+
+
+def add_user_to_language(user_id, language, redis_con):
+    """Добавим пользователя в список программистов с указанным ЯП
+        Используем тип данных SET."""
+    users_ids = get_users_by_language(
+        language=language,
+        redis_con=redis_con,
+    )
+    if str.encode(user_id) in users_ids:
+        return 'Вы уже состоите в списке'
+    redis_con.sadd(language.lower(), user_id) 
+
 
 def add_speaker(speaker_name, speach_time, speach_info, redis_con):
     """Добавляем пользователя по его ID в TG как списка
@@ -89,7 +107,7 @@ def get_speaker_questions(speaker_id, redis_con):
     return questions
 
 
-def create_questionnaire(user_id, redis_con, about_me):
+def create_questionnaire(user_id, redis_con, user_firstname):
     """Создадим анкеты пользовтеля
         Испольщуем тип данных HASH."""
     redis_con.hset(
@@ -99,8 +117,24 @@ def create_questionnaire(user_id, redis_con, about_me):
     )
     redis_con.hset(
         f'{user_id}_questionnaire',
-        'info',
-        about_me,
+        'user_firstname',
+        user_firstname,
+    )
+
+
+def add_age_to_questionnaire(user_id, user_age, redis_con):
+    redis_con.hset(
+        f'{user_id}_questionnaire',
+        'age',
+        user_age,
+    )
+
+
+def add_language_to_questionnaire(user_id, language, redis_con):
+    redis_con.hset(
+        f'{user_id}_questionnaire',
+        'language',
+        language,
     )
 
 
@@ -152,7 +186,19 @@ def main():
         port=os.getenv('DB_PORT'),
         db=os.getenv('DB_NUMBER'),
     )
-    print(get_speach_data(redis_con=r, speach_time='22:22:00'))
+    
+    add_user_to_language(
+        user_id='Oleg',
+        language='python',
+        redis_con=r,
+    )
+    
+    print(
+        get_users_by_language(
+            language='Python',
+            redis_con=r,
+        )
+    )
 
     
 if __name__ == '__main__':

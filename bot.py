@@ -5,7 +5,9 @@ from environs import Env
 from telegram import ReplyKeyboardMarkup, Update
 from telegram.ext import (Updater, CommandHandler, MessageHandler, Filters,
                           ConversationHandler, CallbackContext)
-from data import get_user_status, get_current_speach
+from data import (get_user_status, get_current_speach, create_questionnaire,
+                  add_age_to_questionnaire, add_language_to_questionnaire,
+                  get_users_by_language)
 from functools import partial
 import redis
 
@@ -164,7 +166,12 @@ def ask_name(update: Update, context: CallbackContext) -> int:
     return State.ASKING_NAME
 
 
-def ask_age(update: Update, context: CallbackContext) -> int:
+def ask_age(update: Update, context: CallbackContext, redis_con) -> int:
+    create_questionnaire(
+        user_id=update.message.from_user['id'], 
+        user_firstname=update.message.text,
+        redis_con=redis_con,
+    )
     update.message.reply_text(
         text='Введите возраст',
         reply_markup=ReplyKeyboardMarkup([['Назад']]),
@@ -173,19 +180,34 @@ def ask_age(update: Update, context: CallbackContext) -> int:
     return State.ASKING_AGE
 
 
-def ask_language(update: Update, context: CallbackContext) -> int:
+def ask_language(update: Update, context: CallbackContext, redis_con) -> int:
+    add_age_to_questionnaire(
+        user_id=update.message.from_user['id'],
+        user_age=update.message.text,
+        redis_con=redis_con,
+    )
+
     update.message.reply_text(
         text='Введите язык программирования',
         reply_markup=ReplyKeyboardMarkup([['Назад']]),
     )
 
+
     return State.ASKING_LANGUAGE
 
 
-def get_person(update: Update, context: CallbackContext) -> int:
+def get_person(update: Update, context: CallbackContext, redis_con) -> int:
+    add_language_to_questionnaire(
+        user_id=update.message.from_user['id'],
+        language=update.message.text,
+        redis_con=redis_con,
+    )
+    users_with_same_language = get_users_by_language(
+        language=update.message.text,
+        redis_con=redis_con,
+    )
     update.message.reply_text(
-        text='Имя и разные данные из анкеты другого пользователя, '
-             'либо сообщение что никто не найден',
+        text=users_with_same_language,
         reply_markup=ReplyKeyboardMarkup(
             [['Выбрать'], ['Следующий'], ['Назад']]
         ),
@@ -464,15 +486,30 @@ def main() -> None:
             ],
             State.ASKING_NAME: [
                 MessageHandler(Filters.regex(r'Назад'), show_main_keyboard),
-                MessageHandler(Filters.text, ask_age)
+                MessageHandler(
+                    Filters.text,
+                    partial(
+                        ask_age,
+                        redis_con=r,
+                    ))
             ],
             State.ASKING_AGE: [
                 MessageHandler(Filters.regex(r'Назад'), show_main_keyboard),
-                MessageHandler(Filters.text, ask_language)
+                MessageHandler(
+                    Filters.text,
+                    partial(
+                        ask_language,
+                        redis_con=r,
+                    ))
             ],
             State.ASKING_LANGUAGE: [
                 MessageHandler(Filters.regex(r'Назад'), show_main_keyboard),
-                MessageHandler(Filters.text, get_person)
+                MessageHandler(
+                    Filters.text,
+                    partial(
+                        get_person,
+                        redis_con=r,
+                    ))
             ],
             State.CHOOSING_PERSON: [
                 MessageHandler(Filters.regex(r'Назад'), show_main_keyboard),
