@@ -19,8 +19,11 @@ def get_user_status(user_id, redis_con):
 def get_users_by_language(language, redis_con):
     """Получим всех пользователей, которые используют выбранных язык
         Используем тип данных SET."""
+    users = []
     users_ids = redis_con.smembers(language.lower())
-    return users_ids
+    for user_id in users_ids:
+        users.append(user_id.decode('utf-8'))
+    return users
 
 
 def add_user_to_language(user_id, language, redis_con):
@@ -89,7 +92,7 @@ def create_question(user_id, question, redis_con):
     """Получим текущее выступление и зададим вопрос спикеру
         Используем тип данных SET, ключ это <username спикера>_questions
         и значение это перечисление вопросов."""
-    current_speaker = get_current_speach(redis_con=redis_con).decode('utf-8')
+    current_speaker = get_current_speach(redis_con=redis_con)['speaker']
     redis_con.sadd(
         f'{current_speaker}_questions',
         f'{user_id}: {question}',
@@ -151,7 +154,7 @@ def get_user_questionnaire(user_id, redis_con):
     }
 
 
-def get_schedule(redis_con):
+def get_schedule_db(redis_con):
     """Получим время начала текущего доклада, затем следующие доклады."""
     current_speach_time = redis_con.get('current_speach').decode('utf-8')
     next_speach = {}
@@ -186,12 +189,7 @@ def main():
         port=os.getenv('DB_PORT'),
         db=os.getenv('DB_NUMBER'),
     )
-    
-    add_user_to_language(
-        user_id='Oleg',
-        language='python',
-        redis_con=r,
-    )
+
     
     print(
         get_users_by_language(

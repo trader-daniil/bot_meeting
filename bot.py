@@ -5,11 +5,11 @@ from environs import Env
 from telegram import ReplyKeyboardMarkup, Update, LabeledPrice
 from telegram.ext import (Updater, CommandHandler, MessageHandler, Filters,
                           ConversationHandler, CallbackContext,
-                          PreCheckoutQueryHandler, TypeHandler)
+                          PreCheckoutQueryHandler, TypeHandler,
                           ConversationHandler, CallbackContext)
 from data import (get_user_status, get_current_speach, create_questionnaire,
                   add_age_to_questionnaire, add_language_to_questionnaire,
-                  get_users_by_language)
+                  get_users_by_language, get_schedule_db, create_question)
 from functools import partial
 import redis
 
@@ -117,7 +117,12 @@ def ask_question(update: Update, context: CallbackContext) -> int:
     return State.SAVING_QUESTION
 
 
-def save_question(update: Update, context: CallbackContext) -> int:
+def save_question(update: Update, context: CallbackContext, redis_con) -> int:
+    create_question(
+        user_id=update.message.from_user,
+        question=update.message.text,
+        redis_con=redis_con,
+    )
     update.message.reply_text(
         text='Ваш вопрос записан',
         reply_markup=ReplyKeyboardMarkup(main_keyboard),
@@ -239,13 +244,14 @@ def get_contact(update: Update, context: CallbackContext) -> int:
     return State.CHOOSING
 
 
-def get_schedule(update: Update, context: CallbackContext) -> int:
+def get_schedule(update: Update, context: CallbackContext, redis_con) -> int:
     context.bot.delete_message(
         update.message.chat.id,
         update.message.message_id,
     )
+    schedule = get_schedule_db(redis_con=redis_con)
     update.message.reply_text(
-        text='Тут расписание',
+        text=schedule,
         reply_markup=ReplyKeyboardMarkup(main_keyboard),
     )
 
@@ -487,8 +493,18 @@ def main() -> None:
                 MessageHandler(Filters.regex(r'Пообщаться'), ask_meeting),
                 CommandHandler('meet', ask_meeting),
 
-                MessageHandler(Filters.regex(r'Расписание'), get_schedule),
-                CommandHandler('schedule', get_schedule),
+                MessageHandler(
+                    Filters.regex(r'Расписание'),
+                    partial(
+                        get_schedule,
+                        redis_con=r,
+                    )),
+                CommandHandler(
+                    'schedule',
+                    partial(
+                        get_schedule,
+                        redit_con=r,
+                    )),
 
                 MessageHandler(Filters.regex(r'Задонатить'), donate),
                 CommandHandler('donate', donate),
@@ -522,7 +538,12 @@ def main() -> None:
             ],
             State.SAVING_QUESTION: [
                 MessageHandler(Filters.regex(r'Назад'), show_main_keyboard),
-                MessageHandler(Filters.text, save_question)
+                MessageHandler(
+                    Filters.text,
+                    partial(
+                        save_question,
+                        redis_con=r,
+                    )),
             ],
             State.STARTING_FORM: [
                 MessageHandler(Filters.regex(r'Назад'), show_main_keyboard),
