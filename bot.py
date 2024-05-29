@@ -232,9 +232,6 @@ def get_person(update: Update, context: CallbackContext, redis_con) -> int:
         language=update.message.text,
         redis_con=redis_con,
     )
-    print(random.choice(users_with_same_language))
-    print(random.choice(users_with_same_language))
-    print(random.choice(users_with_same_language))
     update.message.reply_text(
         text=random.choice(users_with_same_language),
         reply_markup=ReplyKeyboardMarkup(
@@ -357,6 +354,7 @@ def choose_speaker(update: Update, context: CallbackContext, redis_con) -> int:
 
 def choose_meeting_time(update: Update, context: CallbackContext, redis_con) -> int:
     allowed_time = get_allowed_time(redis_con=redis_con)
+    print(update.message.text, '-----------text')
     update.message.reply_text(
         text='Выберите доступное время',
         #  список кнопок со свободным временем
@@ -369,7 +367,8 @@ def choose_meeting_time(update: Update, context: CallbackContext, redis_con) -> 
 
 
 def save_meeting(update: Update, context: CallbackContext) -> int:
-    # meeting_time = update.message.text
+    meeting_time = update.message.text
+    print(meeting_time)
     update.message.reply_text(
         text='Докладчик записан',
         reply_markup=ReplyKeyboardMarkup(main_keyboard),
@@ -379,6 +378,7 @@ def save_meeting(update: Update, context: CallbackContext) -> int:
 
 
 def edit_schedule(update: Update, context: CallbackContext) -> int:
+    allowed_time = get_allowed_time(redis_con=redis_con)
     update.message.reply_text(
         text='Выберите доклад',
         # cписок докладов
