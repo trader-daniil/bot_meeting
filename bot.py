@@ -5,7 +5,7 @@ from environs import Env
 from telegram import ReplyKeyboardMarkup, Update, LabeledPrice
 from telegram.ext import (Updater, CommandHandler, MessageHandler, Filters,
                           ConversationHandler, CallbackContext,
-                          PreCheckoutQueryHandler, TypeHandler)
+                          PreCheckoutQueryHandler, TypeHandler,
                           ConversationHandler, CallbackContext)
 from data import get_user_status, get_current_speach
 from functools import partial
@@ -277,22 +277,18 @@ def send_invoice(update: Update, context: CallbackContext) -> int:
     return State.SENDING_INVOICE
 
 
-def checkout(pre_checkout_query):
-    updater.bot.answer_pre_checkout_query(
-        pre_checkout_query.id,
-        ok=True,
-        error_message='Ошибка оплаты'
-    )
+def checkout(update, context):
+    query = update.pre_checkout_query
+    if query.invoice_payload != "Custom-Payload":
+        query.answer(ok=False, error_message="Something went wrong...")
+    else:
+        query.answer(ok=True)
 
     return State.GOT_PAYMENT
 
 
 def got_payment(message):
-    updater.bot.send_message(
-        message.chat.id,
-        'Успешная оплата',
-        parse_mode='Markdown'
-    )
+    update.message.reply_text('Успешная оплата')
 
 
 def choose_speaker(update: Update, context: CallbackContext) -> int:
@@ -555,11 +551,11 @@ def main() -> None:
                 MessageHandler(Filters.text, send_invoice)
             ],
             State.SENDING_INVOICE: [
-                PreCheckoutQueryHandler(lambda query: True, checkout),
+                PreCheckoutQueryHandler(checkout),
             ],
             State.GOT_PAYMENT: [
-                TypeHandler('successful_payment', got_payment),
-            ]
+                MessageHandler(filters.SUCCESSFUL_PAYMENT, got_payment)
+            ],
         },
         fallbacks=[CommandHandler('cancel', cancel)]
     )
