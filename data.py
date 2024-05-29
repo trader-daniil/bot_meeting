@@ -16,6 +16,31 @@ def get_user_status(user_id, redis_con):
         return 'organizer'
     return 'listener'
 
+
+def get_speakers_with_speach(redis_con):
+    """Получим id спикеров, которым назначили время."""
+    return redis_con.smembers('scheduled_speakers')
+
+
+def get_speakers_without_speach(redis_con):
+    """Получим id спикеров, которым не назанчили
+        время выступления."""
+    speakers_ids = []
+    allowed_speakers = redis_con.sdiff(
+        'speakers',
+        'scheduled_speakers',
+    )
+    for speaker in allowed_speakers:
+        if isinstance(speaker, bytes):
+            speakers_ids.append(speaker.decode('utf-8'))
+            continue
+        speakers_ids.append(speaker)
+    return speakers_ids
+
+    
+
+
+
 def get_users_by_language(language, redis_con):
     """Получим всех пользователей, которые используют выбранных язык
         Используем тип данных SET."""
@@ -33,7 +58,7 @@ def add_user_to_language(user_id, language, redis_con):
         language=language,
         redis_con=redis_con,
     )
-    if str.encode(user_id) in users_ids:
+    if user_id in users_ids:
         return 'Вы уже состоите в списке'
     redis_con.sadd(language.lower(), user_id) 
 
@@ -85,7 +110,6 @@ def get_current_speach(redis_con):
         'speach_info': info
     }
     return speach_info
-
 
 
 def create_question(user_id, question, redis_con):
@@ -181,6 +205,16 @@ def remove_speaker(time_to_delete, redis_con):
     )
 
 
+def get_allowed_time(redis_con):
+    """Получим незанятое время для доклада."""
+    all_speach_time = [f'{i}:00:00' for i in range(9, 19)]
+    reserved_time = get_schedule_db(redis_con=redis_con).keys()
+    for el in all_speach_time:
+        if el in reserved_time:
+            all_speach_time.remove(el)
+    return all_speach_time
+
+
 def main():
     load_dotenv()
     tg_bot_token = os.getenv('TG_BOT_TOKEN')
@@ -189,14 +223,7 @@ def main():
         port=os.getenv('DB_PORT'),
         db=os.getenv('DB_NUMBER'),
     )
-
-    
-    print(
-        get_users_by_language(
-            language='Python',
-            redis_con=r,
-        )
-    )
+    print(get_allowed_time(redis_con=r))
 
     
 if __name__ == '__main__':
