@@ -4,11 +4,16 @@ from enum import Enum
 from environs import Env
 from telegram import ReplyKeyboardMarkup, Update, LabeledPrice
 from telegram.ext import (Updater, CommandHandler, MessageHandler, Filters,
-                          ConversationHandler, CallbackContext,
-                          PreCheckoutQueryHandler)
-from data import get_user_status, get_current_speach
+                          PreCheckoutQueryHandler, TypeHandler,
+                          ConversationHandler, CallbackContext)
+from data import (get_user_status, get_current_speach, create_questionnaire,
+                  add_age_to_questionnaire, add_language_to_questionnaire,
+                  get_users_by_language, get_schedule_db, create_question,
+                  add_user_to_language, get_speaker_questions, get_speakers_without_speach,
+                  get_allowed_time, add_new_speaker, get_new_speaker)
 from functools import partial
 import redis
+import random
 
 
 env = Env()
@@ -68,6 +73,7 @@ def start(update: Update, context: CallbackContext, redis_con) -> int:
         user_id=user.id,
         redis_con=redis_con,
     )
+    print(user.id)
 
     if user_role == 'speaker':
         main_keyboard = speaker_keyboard
@@ -112,7 +118,13 @@ def ask_question(update: Update, context: CallbackContext) -> int:
     return State.SAVING_QUESTION
 
 
-def save_question(update: Update, context: CallbackContext) -> int:
+def save_question(update: Update, context: CallbackContext, redis_con) -> int:
+    """Добавить возможность"""
+    create_question(
+        user_id=update.message.from_user,
+        question=update.message.text,
+        redis_con=redis_con,
+    )
     update.message.reply_text(
         text='Ваш вопрос записан',
         reply_markup=ReplyKeyboardMarkup(main_keyboard),
@@ -171,7 +183,12 @@ def ask_name(update: Update, context: CallbackContext) -> int:
     return State.ASKING_NAME
 
 
-def ask_age(update: Update, context: CallbackContext) -> int:
+def ask_age(update: Update, context: CallbackContext, redis_con) -> int:
+    create_questionnaire(
+        user_id=update.message.from_user['id'], 
+        user_firstname=update.message.text,
+        redis_con=redis_con,
+    )
     update.message.reply_text(
         text='Введите возраст',
         reply_markup=ReplyKeyboardMarkup([['Назад']]),
@@ -180,19 +197,40 @@ def ask_age(update: Update, context: CallbackContext) -> int:
     return State.ASKING_AGE
 
 
-def ask_language(update: Update, context: CallbackContext) -> int:
+def ask_language(update: Update, context: CallbackContext, redis_con) -> int:
+    add_age_to_questionnaire(
+        user_id=update.message.from_user['id'],
+        user_age=update.message.text,
+        redis_con=redis_con,
+    )
+
     update.message.reply_text(
         text='Введите язык программирования',
         reply_markup=ReplyKeyboardMarkup([['Назад']]),
     )
 
+
     return State.ASKING_LANGUAGE
 
 
-def get_person(update: Update, context: CallbackContext) -> int:
+def get_person(update: Update, context: CallbackContext, redis_con) -> int:
+    user_id = update.message.from_user['id']
+    add_language_to_questionnaire(
+        user_id=user_id,
+        language=update.message.text,
+        redis_con=redis_con,
+    )
+    add_user_to_language(
+        user_id=user_id,
+        language=update.message.text,
+        redis_con=redis_con,
+    )
+    users_with_same_language = get_users_by_language(
+        language=update.message.text,
+        redis_con=redis_con,
+    )
     update.message.reply_text(
-        text='Имя и разные данные из анкеты другого пользователя, '
-             'либо сообщение что никто не найден',
+        text=random.choice(users_with_same_language),
         reply_markup=ReplyKeyboardMarkup(
             [['Выбрать'], ['Следующий'], ['Назад']]
         ),
@@ -201,26 +239,35 @@ def get_person(update: Update, context: CallbackContext) -> int:
     return State.CHOOSING_PERSON
 
 
-def get_contact(update: Update, context: CallbackContext) -> int:
+def get_contact(update: Update, context: CallbackContext, redis_con) -> int:
     context.bot.delete_message(
         update.message.chat.id,
         update.message.message_id,
     )
+    users_with_same_language = get_users_by_language(
+        language=update.message.text,
+        redis_con=redis_con,
+    )
     update.message.reply_text(
-        text='@ник_пользователя',
+        text=users_with_same_language[random.randint(0, len(users_with_same_language) - 1)],
         reply_markup=ReplyKeyboardMarkup(main_keyboard),
     )
-
     return State.CHOOSING
 
 
-def get_schedule(update: Update, context: CallbackContext) -> int:
+def get_schedule(update: Update, context: CallbackContext, redis_con) -> int:
     context.bot.delete_message(
         update.message.chat.id,
         update.message.message_id,
     )
+    result = ''
+    schedule = get_schedule_db(redis_con=redis_con)
+    print(schedule, 'in function')
+    for time, theme in schedule.items():
+        result += f'время начала - {time}, тема выступления - {theme}\n'
+
     update.message.reply_text(
-        text='Тут расписание',
+        text=result,
         reply_markup=ReplyKeyboardMarkup(main_keyboard),
     )
 
@@ -229,20 +276,22 @@ def get_schedule(update: Update, context: CallbackContext) -> int:
 
 def about_meetings(update: Update, context: CallbackContext) -> int:
     update.message.reply_text(
-        text='О том как знакомиться',
+        text=('Для начала заполните анкету, после этого мы дадаим '
+              'вам логины пользователей со схожими языками программирования'),
         reply_markup=ReplyKeyboardMarkup([['Заполнить анкету'], ['Назад']],)
     )
 
     return State.STARTING_FORM
 
 
-def get_questions(update: Update, context: CallbackContext) -> int:
+def get_questions(update: Update, context: CallbackContext, redi_con) -> int:
     context.bot.delete_message(
         update.message.chat.id,
         update.message.message_id,
     )
+    questions = get_speaker_questions(redis_con=redi_con)
     update.message.reply_text(
-        text='Тут список контактов или вопросов',
+        text=questions,
         reply_markup=ReplyKeyboardMarkup(main_keyboard),
     )
 
@@ -288,32 +337,55 @@ def got_payment(update, context):
     update.message.reply_text('Успешная оплата')
 
 
-def choose_speaker(update: Update, context: CallbackContext) -> int:
+def choose_speaker(update: Update, context: CallbackContext, redis_con) -> int:
+    allowed_speakers = get_speakers_without_speach(
+        redis_con=redis_con,
+    )
     update.message.reply_text(
-        text='Выберите докладчика',
+        text='Выберите спикера',
         reply_markup=ReplyKeyboardMarkup(
-            [[f'speaker{i}'] for i in range(5)]
+            [[speaker] for speaker in allowed_speakers]
         )
     )
-
     return State.CHOOSING_SPEAKER
 
 
-def choose_meeting_time(update: Update, context: CallbackContext) -> int:
-    # username = update.message.text
+def choose_meeting_time(update: Update, context: CallbackContext, redis_con) -> int:
+    allowed_time = get_allowed_time(redis_con=redis_con)
+    add_new_speaker(
+        redis_con=redis_con,
+        speaker_id=update.message.text
+    )
     update.message.reply_text(
         text='Выберите доступное время',
         #  список кнопок со свободным временем
         reply_markup=ReplyKeyboardMarkup(
-            [[f'{i}:00'] for i in range(9, 19)]
+            [[time] for time in allowed_time]
         ),
     )
 
     return State.CHOOSING_MEETING_TIME
 
 
-def save_meeting(update: Update, context: CallbackContext) -> int:
-    # meeting_time = update.message.text
+def save_meeting(update: Update, context: CallbackContext, redis_con) -> int:
+    meeting_time = update.message.text
+    speaker_id = get_new_speaker(redis_con=redis_con).encode('utf-8')
+    
+    print(meeting_time, '-------------')
+    print(speaker_id, '---------------')
+    redis_con.sadd(
+        'scheduled_speakers',
+        speaker_id,
+    )
+    redis_con.hset(
+        'speach_time',
+        meeting_time,
+        speaker_id,
+    )
+    redis_con.set(
+        f'{meeting_time}_info',
+        f'{speaker_id}: новое выступление',
+    )
     update.message.reply_text(
         text='Докладчик записан',
         reply_markup=ReplyKeyboardMarkup(main_keyboard),
@@ -323,6 +395,7 @@ def save_meeting(update: Update, context: CallbackContext) -> int:
 
 
 def edit_schedule(update: Update, context: CallbackContext) -> int:
+    allowed_time = get_allowed_time(redis_con=redis_con)
     update.message.reply_text(
         text='Выберите доклад',
         # cписок докладов
@@ -458,21 +531,40 @@ def main() -> None:
                 MessageHandler(Filters.regex(r'Пообщаться'), ask_meeting),
                 CommandHandler('meet', ask_meeting),
 
-                MessageHandler(Filters.regex(r'Расписание'), get_schedule),
-                CommandHandler('schedule', get_schedule),
+                MessageHandler(
+                    Filters.regex(r'Расписание'),
+                    partial(
+                        get_schedule,
+                        redis_con=r,
+                    )),
+                CommandHandler(
+                    'schedule',
+                    partial(
+                        get_schedule,
+                        redit_con=r,
+                    )),
 
                 MessageHandler(Filters.regex(r'Задонатить'), donate),
                 CommandHandler('donate', donate),
-
                 MessageHandler(
                     Filters.regex(r'Список вопросов'),
-                    get_questions,
+                    partial(
+                        get_questions,
+                        redis_con=r,
+                    )
                 ),
-                CommandHandler('questions', get_questions),
-
+                CommandHandler(
+                    'questions',
+                    partial(
+                        get_questions,
+                        redis_con=r,
+                )),
                 MessageHandler(
                     Filters.regex(r'Добавить докладчика'),
-                    choose_speaker,
+                    partial(
+                        choose_speaker,
+                        redis_con=r
+                    )
                 ),
 
                 MessageHandler(
@@ -493,7 +585,12 @@ def main() -> None:
             ],
             State.SAVING_QUESTION: [
                 MessageHandler(Filters.regex(r'Назад'), show_main_keyboard),
-                MessageHandler(Filters.text, save_question)
+                MessageHandler(
+                    Filters.text,
+                    partial(
+                        save_question,
+                        redis_con=r,
+                    )),
             ],
             State.STARTING_FORM: [
                 MessageHandler(Filters.regex(r'Назад'), show_main_keyboard),
@@ -504,28 +601,63 @@ def main() -> None:
             ],
             State.ASKING_NAME: [
                 MessageHandler(Filters.regex(r'Назад'), show_main_keyboard),
-                MessageHandler(Filters.text, ask_age)
+                MessageHandler(
+                    Filters.text,
+                    partial(
+                        ask_age,
+                        redis_con=r,
+                    ))
             ],
             State.ASKING_AGE: [
                 MessageHandler(Filters.regex(r'Назад'), show_main_keyboard),
-                MessageHandler(Filters.text, ask_language)
+                MessageHandler(
+                    Filters.text,
+                    partial(
+                        ask_language,
+                        redis_con=r,
+                    ))
             ],
             State.ASKING_LANGUAGE: [
                 MessageHandler(Filters.regex(r'Назад'), show_main_keyboard),
-                MessageHandler(Filters.text, get_person)
+                MessageHandler(
+                    Filters.text,
+                    partial(
+                        get_person,
+                        redis_con=r,
+                    ))
             ],
             State.CHOOSING_PERSON: [
                 MessageHandler(Filters.regex(r'Назад'), show_main_keyboard),
-                MessageHandler(Filters.regex(r'Выбрать'), get_contact),
-                MessageHandler(Filters.regex(r'Следующий'), get_person),
+                MessageHandler(
+                    Filters.regex(r'Выбрать'),
+                    partial(
+                        get_contact,
+                        redis_con=r,
+                )),
+                MessageHandler(
+                    Filters.regex(r'Следующий'),
+                    partial(
+                        get_person,
+                        redis_con=r,
+                )),
             ],
             State.CHOOSING_SPEAKER: [
                 MessageHandler(Filters.regex(r'Назад'), show_main_keyboard),
-                MessageHandler(Filters.text, choose_meeting_time)
+                MessageHandler(
+                    Filters.text,
+                    partial(
+                        choose_meeting_time,
+                        redis_con=r,
+                    ))
             ],
             State.CHOOSING_MEETING_TIME: [
                 MessageHandler(Filters.regex(r'Назад'), show_main_keyboard),
-                MessageHandler(Filters.text, save_meeting)
+                MessageHandler(
+                    Filters.text,
+                    partial(
+                        save_meeting,
+                        redis_con=r,
+                    ))
             ],
             State.EDITING_SCHEDULE: [
                 MessageHandler(Filters.regex(r'Назад'), show_main_keyboard),
