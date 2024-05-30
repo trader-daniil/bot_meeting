@@ -4,7 +4,6 @@ from enum import Enum
 from environs import Env
 from telegram import ReplyKeyboardMarkup, Update, LabeledPrice
 from telegram.ext import (Updater, CommandHandler, MessageHandler, Filters,
-                          ConversationHandler, CallbackContext,
                           PreCheckoutQueryHandler, TypeHandler,
                           ConversationHandler, CallbackContext)
 from data import (get_user_status, get_current_speach, create_questionnaire,
@@ -19,8 +18,6 @@ import random
 
 env = Env()
 env.read_env()
-
-updater = Updater(env.str('TELEGRAM_BOT_TOKEN'))
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +76,7 @@ def start(update: Update, context: CallbackContext, redis_con) -> int:
     print(user.id)
 
     if user_role == 'speaker':
-        main_keyboard = listener_keyboard
+        main_keyboard = speaker_keyboard
     elif user_role == 'organizer':
         main_keyboard = organizer_keyboard
     else:
@@ -307,7 +304,7 @@ def donate(update: Update, context: CallbackContext) -> int:
         reply_markup=ReplyKeyboardMarkup([['Назад']]),
     )
 
-    return State.GETTING_DONATE
+    ConversationHandler.END
 
 
 def send_invoice(update: Update, context: CallbackContext) -> int:
@@ -336,7 +333,7 @@ def checkout(update, context):
     return State.GOT_PAYMENT
 
 
-def got_payment(message):
+def got_payment(update, context):
     update.message.reply_text('Успешная оплата')
 
 
@@ -496,7 +493,7 @@ def cancel(update: Update, context: CallbackContext) -> int:
 
 def main() -> None:
     """Start the bot."""
-    updater = Updater(env.str('TELEGRAM_BOT_TOKEN'))
+    updater = Updater(env.str('TG_BOT_TOKEN'))
     r = redis.Redis(
         host=env.str('DB_HOST'),
         port=env.str('DB_PORT'),
@@ -524,7 +521,7 @@ def main() -> None:
                 CommandHandler(
                     'now',
                     partial(
-                        now, 
+                        now,
                         redis_con=r,
                     ),
                 ),
@@ -686,7 +683,7 @@ def main() -> None:
                 PreCheckoutQueryHandler(checkout),
             ],
             State.GOT_PAYMENT: [
-                MessageHandler(filters.SUCCESSFUL_PAYMENT, got_payment)
+                MessageHandler(Filters.successful_payment, got_payment),
             ],
         },
         fallbacks=[CommandHandler('cancel', cancel)]
