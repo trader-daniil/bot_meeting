@@ -251,11 +251,16 @@ def get_questions(update: Update, context: CallbackContext) -> int:
 
 def donate(update: Update, context: CallbackContext) -> int:
     update.message.reply_text(
-        text='Введите сумму доната',
-        reply_markup=ReplyKeyboardMarkup([['Назад']]),
+        text='Тестовая банковская карта\n'
+             'Номер карты: 6390 0200 0000 000003\n'
+             'Дата истечения срока действия: 12/24\n'
+             'CVV: 123\n'
+             'Проверочный код 3-D Secure: 12345678\n'
+             '\n'
+             'Введите сумму доната(минимальная сумма 10 рублей)',
     )
 
-    ConversationHandler.END
+    return State.GETTING_DONATE
 
 
 def send_invoice(update: Update, context: CallbackContext) -> int:
@@ -271,21 +276,24 @@ def send_invoice(update: Update, context: CallbackContext) -> int:
         prices=[LabeledPrice(label='Донат', amount=price * 100)],
     )
 
-    return State.SENDING_INVOICE
+    return ConversationHandler.END
 
 
 def checkout(update, context):
     query = update.pre_checkout_query
-    if query.invoice_payload != "Custom-Payload":
+    if query.invoice_payload != 'invoice_payload_test':
         query.answer(ok=False, error_message="Something went wrong...")
     else:
         query.answer(ok=True)
 
-    return State.GOT_PAYMENT
-
 
 def got_payment(update, context):
-    update.message.reply_text('Успешная оплата')
+    update.message.reply_text(
+        'Успешная оплата',
+        reply_markup=ReplyKeyboardMarkup(main_keyboard),
+    )
+
+    return State.CHOOSING
 
 
 def choose_speaker(update: Update, context: CallbackContext) -> int:
@@ -430,13 +438,16 @@ def main() -> None:
     dispatcher = updater.dispatcher
 
     conv_handler = ConversationHandler(
-        entry_points=[CommandHandler(
-            'start',
-            partial(
-                start,
-                redis_con=r,
+        entry_points=[
+            CommandHandler(
+                'start',
+                partial(
+                    start,
+                    redis_con=r,
+                ),
             ),
-        )],
+            MessageHandler(Filters.successful_payment, got_payment),
+        ],
         states={
             State.CHOOSING: [
                 MessageHandler(
@@ -547,17 +558,12 @@ def main() -> None:
                 MessageHandler(Filters.regex(r'Назад'), show_main_keyboard),
                 MessageHandler(Filters.text, send_invoice)
             ],
-            State.SENDING_INVOICE: [
-                PreCheckoutQueryHandler(checkout),
-            ],
-            State.GOT_PAYMENT: [
-                MessageHandler(Filters.successful_payment, got_payment),
-            ],
         },
         fallbacks=[CommandHandler('cancel', cancel)]
     )
 
     dispatcher.add_handler(conv_handler)
+    dispatcher.add_handler(PreCheckoutQueryHandler(checkout))
 
     updater.start_polling()
     logger.info('Bot started.')
