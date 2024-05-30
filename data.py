@@ -17,6 +17,69 @@ def get_user_status(user_id, redis_con):
     return 'listener'
 
 
+def make_user_speaker(user_id, redis_con):
+    """Добавляем user_id в SET со спикерами."""
+    redis_con.sadd(
+        'speakers',
+        user_id,
+    )
+
+def get_speakers_with_speach(redis_con):
+    """Получим id спикеров, которым назначили время."""
+    return redis_con.smembers('scheduled_speakers')
+
+
+def get_speakers_without_speach(redis_con):
+    """Получим id спикеров, которым не назанчили
+        время выступления."""
+    speakers_ids = []
+    allowed_speakers = redis_con.sdiff(
+        'speakers',
+        'scheduled_speakers',
+    )
+    for speaker in allowed_speakers:
+        if isinstance(speaker, bytes):
+            speakers_ids.append(speaker.decode('utf-8'))
+            continue
+        speakers_ids.append(speaker)
+    return speakers_ids
+
+    
+def add_new_speaker(redis_con, speaker_id):
+    """Создаем новое выступление с переданным id спикера."""
+    redis_con.set(
+        'new_speach',
+        speaker_id,
+    )
+
+
+def get_new_speaker(redis_con):
+    """Получим id спикера для новог выступления."""
+    return redis_con.get('new_speach')
+
+
+def get_users_by_language(language, redis_con):
+    """Получим всех пользователей, которые используют выбранных язык
+        Используем тип данных SET."""
+    users = []
+    users_ids = redis_con.smembers(language.lower())
+    for user_id in users_ids:
+        users.append(user_id.decode('utf-8'))
+    return users
+
+
+def add_user_to_language(user_id, language, redis_con):
+    """Добавим пользователя в список программистов с указанным ЯП
+        Используем тип данных SET."""
+    users_ids = get_users_by_language(
+        language=language,
+        redis_con=redis_con,
+    )
+    if user_id in users_ids:
+        return 'Вы уже состоите в списке'
+    redis_con.sadd(language.lower(), user_id) 
+
+
 def add_speaker(speaker_name, speach_time, speach_info, redis_con):
     """Добавляем пользователя по его ID в TG как списка
         Используем тип данных HASH ключ - время в формате HH:MM:SS значение - id спикера"""
@@ -28,6 +91,10 @@ def add_speaker(speaker_name, speach_time, speach_info, redis_con):
     redis_con.set(
         f'{speach_time}_info',
         f'{speaker_name}: {speach_info}',
+    )
+    redis_con.sadd(
+        'scheduled_speakers',
+        speaker_name,
     )
 
 
@@ -66,12 +133,11 @@ def get_current_speach(redis_con):
     return speach_info
 
 
-
 def create_question(user_id, question, redis_con):
     """Получим текущее выступление и зададим вопрос спикеру
         Используем тип данных SET, ключ это <username спикера>_questions
         и значение это перечисление вопросов."""
-    current_speaker = get_current_speach(redis_con=redis_con).decode('utf-8')
+    current_speaker = get_current_speach(redis_con=redis_con)['speaker']
     redis_con.sadd(
         f'{current_speaker}_questions',
         f'{user_id}: {question}',
@@ -89,7 +155,7 @@ def get_speaker_questions(speaker_id, redis_con):
     return questions
 
 
-def create_questionnaire(user_id, redis_con, about_me):
+def create_questionnaire(user_id, redis_con, user_firstname):
     """Создадим анкеты пользовтеля
         Испольщуем тип данных HASH."""
     redis_con.hset(
@@ -99,8 +165,24 @@ def create_questionnaire(user_id, redis_con, about_me):
     )
     redis_con.hset(
         f'{user_id}_questionnaire',
-        'info',
-        about_me,
+        'user_firstname',
+        user_firstname,
+    )
+
+
+def add_age_to_questionnaire(user_id, user_age, redis_con):
+    redis_con.hset(
+        f'{user_id}_questionnaire',
+        'age',
+        user_age,
+    )
+
+
+def add_language_to_questionnaire(user_id, language, redis_con):
+    redis_con.hset(
+        f'{user_id}_questionnaire',
+        'language',
+        language,
     )
 
 
@@ -117,7 +199,7 @@ def get_user_questionnaire(user_id, redis_con):
     }
 
 
-def get_schedule(redis_con):
+def get_schedule_db(redis_con):
     """Получим время начала текущего доклада, затем следующие доклады."""
     current_speach_time = redis_con.get('current_speach').decode('utf-8')
     next_speach = {}
@@ -131,8 +213,10 @@ def get_schedule(redis_con):
             speach_time.decode('utf-8'),
             '%H:%M:%S'
         ).time()
-        if speach_time_formated> current_speach_time:
-            next_speach[speach_time.decode('utf-8')] = speaker.decode('utf-8')
+        if speach_time_formated > current_speach_time:
+            speach_info = redis_con.get(f"{speach_time.decode('utf-8')}_info")
+            next_speach[speach_time.decode('utf-8')] = speach_info.decode('utf-8')
+    print(next_speach, '----------')
     
     return next_speach
 
@@ -144,6 +228,16 @@ def remove_speaker(time_to_delete, redis_con):
     )
 
 
+def get_allowed_time(redis_con):
+    """Получим незанятое время для доклада."""
+    all_speach_time = [f'{i}:00:00' for i in range(9, 19)]
+    reserved_time = get_schedule_db(redis_con=redis_con).keys()
+    for el in all_speach_time:
+        if el in reserved_time:
+            all_speach_time.remove(el)
+    return all_speach_time
+
+
 def main():
     load_dotenv()
     tg_bot_token = os.getenv('TG_BOT_TOKEN')
@@ -152,7 +246,7 @@ def main():
         port=os.getenv('DB_PORT'),
         db=os.getenv('DB_NUMBER'),
     )
-    print(get_speach_data(redis_con=r, speach_time='22:22:00'))
+    print(get_allowed_time(redis_con=r))
 
     
 if __name__ == '__main__':
