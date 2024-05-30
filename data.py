@@ -45,7 +45,17 @@ def get_speakers_without_speach(redis_con):
     return speakers_ids
 
     
+def add_new_speaker(redis_con, speaker_id):
+    """Создаем новое выступление с переданным id спикера."""
+    redis_con.set(
+        'new_speach',
+        speaker_id,
+    )
 
+
+def get_new_speaker(redis_con):
+    """Получим id спикера для новог выступления."""
+    return redis_con.get('new_speach')
 
 
 def get_users_by_language(language, redis_con):

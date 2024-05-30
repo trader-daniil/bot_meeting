@@ -11,7 +11,7 @@ from data import (get_user_status, get_current_speach, create_questionnaire,
                   add_age_to_questionnaire, add_language_to_questionnaire,
                   get_users_by_language, get_schedule_db, create_question,
                   add_user_to_language, get_speaker_questions, get_speakers_without_speach,
-                  get_allowed_time)
+                  get_allowed_time, add_new_speaker, get_new_speaker)
 from functools import partial
 import redis
 import random
@@ -359,6 +359,10 @@ def choose_speaker(update: Update, context: CallbackContext, redis_con) -> int:
 
 def choose_meeting_time(update: Update, context: CallbackContext, redis_con) -> int:
     allowed_time = get_allowed_time(redis_con=redis_con)
+    add_new_speaker(
+        redis_con=redis_con,
+        speaker_id=update.message.text
+    )
     update.message.reply_text(
         text='Выберите доступное время',
         #  список кнопок со свободным временем
@@ -370,9 +374,11 @@ def choose_meeting_time(update: Update, context: CallbackContext, redis_con) -> 
     return State.CHOOSING_MEETING_TIME
 
 
-def save_meeting(update: Update, context: CallbackContext) -> int:
+def save_meeting(update: Update, context: CallbackContext, redis_con) -> int:
     meeting_time = update.message.text
-    print(meeting_time)
+    speaker_id = get_new_speaker(redis_con=redis_con)
+    print(meeting_time, '-------------')
+    print(speaker_id, '---------------')
     update.message.reply_text(
         text='Докладчик записан',
         reply_markup=ReplyKeyboardMarkup(main_keyboard),
@@ -639,7 +645,12 @@ def main() -> None:
             ],
             State.CHOOSING_MEETING_TIME: [
                 MessageHandler(Filters.regex(r'Назад'), show_main_keyboard),
-                MessageHandler(Filters.text, save_meeting)
+                MessageHandler(
+                    Filters.text,
+                    partial(
+                        save_meeting,
+                        redis_con=r,
+                    ))
             ],
             State.EDITING_SCHEDULE: [
                 MessageHandler(Filters.regex(r'Назад'), show_main_keyboard),
