@@ -263,9 +263,14 @@ def get_schedule(update: Update, context: CallbackContext, redis_con) -> int:
         update.message.chat.id,
         update.message.message_id,
     )
+    result = ''
     schedule = get_schedule_db(redis_con=redis_con)
+    print(schedule, 'in function')
+    for time, theme in schedule.items():
+        result += f'время начала - {time}, тема выступления - {theme}\n'
+
     update.message.reply_text(
-        text=schedule,
+        text=result,
         reply_markup=ReplyKeyboardMarkup(main_keyboard),
     )
 
@@ -354,7 +359,6 @@ def choose_speaker(update: Update, context: CallbackContext, redis_con) -> int:
 
 def choose_meeting_time(update: Update, context: CallbackContext, redis_con) -> int:
     allowed_time = get_allowed_time(redis_con=redis_con)
-    print(update.message.text, '-----------text')
     update.message.reply_text(
         text='Выберите доступное время',
         #  список кнопок со свободным временем

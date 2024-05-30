@@ -17,6 +17,13 @@ def get_user_status(user_id, redis_con):
     return 'listener'
 
 
+def make_user_speaker(user_id, redis_con):
+    """Добавляем user_id в SET со спикерами."""
+    redis_con.sadd(
+        'speakers',
+        user_id,
+    )
+
 def get_speakers_with_speach(redis_con):
     """Получим id спикеров, которым назначили время."""
     return redis_con.smembers('scheduled_speakers')
@@ -74,6 +81,10 @@ def add_speaker(speaker_name, speach_time, speach_info, redis_con):
     redis_con.set(
         f'{speach_time}_info',
         f'{speaker_name}: {speach_info}',
+    )
+    redis_con.sadd(
+        'scheduled_speakers',
+        speaker_name,
     )
 
 
@@ -192,8 +203,10 @@ def get_schedule_db(redis_con):
             speach_time.decode('utf-8'),
             '%H:%M:%S'
         ).time()
-        if speach_time_formated> current_speach_time:
-            next_speach[speach_time.decode('utf-8')] = speaker.decode('utf-8')
+        if speach_time_formated > current_speach_time:
+            speach_info = redis_con.get(f"{speach_time.decode('utf-8')}_info")
+            next_speach[speach_time.decode('utf-8')] = speach_info.decode('utf-8')
+    print(next_speach, '----------')
     
     return next_speach
 
