@@ -304,7 +304,7 @@ def donate(update: Update, context: CallbackContext) -> int:
         reply_markup=ReplyKeyboardMarkup([['Назад']]),
     )
 
-    ConversationHandler.END
+    return State.GETTING_DONATE
 
 
 def send_invoice(update: Update, context: CallbackContext) -> int:
@@ -394,7 +394,7 @@ def save_meeting(update: Update, context: CallbackContext, redis_con) -> int:
     return State.CHOOSING
 
 
-def edit_schedule(update: Update, context: CallbackContext) -> int:
+def edit_schedule(update: Update, context: CallbackContext, redis_con) -> int:
     allowed_time = get_allowed_time(redis_con=redis_con)
     update.message.reply_text(
         text='Выберите доклад',
