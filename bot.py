@@ -376,9 +376,23 @@ def choose_meeting_time(update: Update, context: CallbackContext, redis_con) -> 
 
 def save_meeting(update: Update, context: CallbackContext, redis_con) -> int:
     meeting_time = update.message.text
-    speaker_id = get_new_speaker(redis_con=redis_con)
+    speaker_id = get_new_speaker(redis_con=redis_con).encode('utf-8')
+    
     print(meeting_time, '-------------')
     print(speaker_id, '---------------')
+    redis_con.sadd(
+        'scheduled_speakers',
+        speaker_id,
+    )
+    redis_con.hset(
+        'speach_time',
+        meeting_time,
+        speaker_id,
+    )
+    redis_con.set(
+        f'{meeting_time}_info',
+        f'{speaker_id}: новое выступление',
+    )
     update.message.reply_text(
         text='Докладчик записан',
         reply_markup=ReplyKeyboardMarkup(main_keyboard),
