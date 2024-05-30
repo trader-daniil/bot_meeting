@@ -262,7 +262,6 @@ def get_schedule(update: Update, context: CallbackContext, redis_con) -> int:
     )
     result = ''
     schedule = get_schedule_db(redis_con=redis_con)
-    print(schedule, 'in function')
     for time, theme in schedule.items():
         result += f'время начала - {time}, тема выступления - {theme}\n'
 
@@ -371,8 +370,6 @@ def save_meeting(update: Update, context: CallbackContext, redis_con) -> int:
     meeting_time = update.message.text
     speaker_id = get_new_speaker(redis_con=redis_con).encode('utf-8')
     
-    print(meeting_time, '-------------')
-    print(speaker_id, '---------------')
     redis_con.sadd(
         'scheduled_speakers',
         speaker_id,
@@ -396,11 +393,13 @@ def save_meeting(update: Update, context: CallbackContext, redis_con) -> int:
 
 def edit_schedule(update: Update, context: CallbackContext, redis_con) -> int:
     allowed_time = get_allowed_time(redis_con=redis_con)
+    print(get_schedule_db(redis_con=redis_con), '-------schedule')
+    schedule = get_schedule_db(redis_con=redis_con)
     update.message.reply_text(
         text='Выберите доклад',
         # cписок докладов
         reply_markup=ReplyKeyboardMarkup(
-            [[f'{i}:00 - Тема доклада'] for i in range(9, 19)]
+            [[f'{time}: {theme}'] for time, theme in schedule.items()]
         ),
     )
 
@@ -569,7 +568,10 @@ def main() -> None:
 
                 MessageHandler(
                     Filters.regex(r'Изменить программу'),
-                    edit_schedule,
+                    partial(
+                        edit_schedule,
+                        redis_con=r
+                    )
                 ),
 
                 MessageHandler(
