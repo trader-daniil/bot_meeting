@@ -4,13 +4,14 @@ from enum import Enum
 from environs import Env
 from telegram import ReplyKeyboardMarkup, Update, LabeledPrice
 from telegram.ext import (Updater, CommandHandler, MessageHandler, Filters,
-                          PreCheckoutQueryHandler, TypeHandler,
-                          ConversationHandler, CallbackContext)
+                          PreCheckoutQueryHandler, ConversationHandler,
+                          CallbackContext)
 from data import (get_user_status, get_current_speach, create_questionnaire,
                   add_age_to_questionnaire, add_language_to_questionnaire,
                   get_users_by_language, get_schedule_db, create_question,
-                  add_user_to_language, get_speaker_questions, get_speakers_without_speach,
-                  get_allowed_time, add_new_speaker, get_new_speaker)
+                  add_user_to_language, get_speaker_questions,
+                  get_speakers_without_speach, get_allowed_time,
+                  add_new_speaker, get_new_speaker)
 from functools import partial
 import redis
 import random
@@ -42,7 +43,7 @@ State = Enum('State', [
 ])
 
 
-def start(update: Update, context: CallbackContext, redis_con) -> int:
+def start(update: Update, context: CallbackContext, redis_con) -> State:
     """Send a message when the command /start is issued."""
 
     # через update.message.from_user.id получаем роль пользователя
@@ -92,7 +93,7 @@ def start(update: Update, context: CallbackContext, redis_con) -> int:
     return State.CHOOSING
 
 
-def now(update: Update, context: CallbackContext, redis_con) -> int:
+def now(update: Update, context: CallbackContext, redis_con) -> State:
     """Show current meetup."""
     now_keyboard = [['Задать вопрос'], ['Назад'],]
     reply_markup = ReplyKeyboardMarkup(now_keyboard)
@@ -105,7 +106,7 @@ def now(update: Update, context: CallbackContext, redis_con) -> int:
     return State.ASKING_QUESTION
 
 
-def ask_question(update: Update, context: CallbackContext) -> int:
+def ask_question(update: Update, context: CallbackContext) -> State:
     context.bot.delete_message(
         update.message.chat.id,
         update.message.message_id,
@@ -118,7 +119,11 @@ def ask_question(update: Update, context: CallbackContext) -> int:
     return State.SAVING_QUESTION
 
 
-def save_question(update: Update, context: CallbackContext, redis_con) -> int:
+def save_question(
+        update: Update,
+        context: CallbackContext,
+        redis_con,
+) -> State:
     """Добавить возможность"""
     create_question(
         user_id=update.message.from_user,
@@ -133,7 +138,7 @@ def save_question(update: Update, context: CallbackContext, redis_con) -> int:
     return State.CHOOSING
 
 
-def show_main_keyboard(update: Update, context: CallbackContext) -> int:
+def show_main_keyboard(update: Update, context: CallbackContext) -> State:
     context.bot.delete_message(
         update.message.chat.id,
         update.message.message_id,
@@ -146,7 +151,7 @@ def show_main_keyboard(update: Update, context: CallbackContext) -> int:
     return State.CHOOSING
 
 
-def get_help(update: Update, context: CallbackContext) -> int:
+def get_help(update: Update, context: CallbackContext) -> State:
     context.bot.delete_message(
         update.message.chat.id,
         update.message.message_id,
@@ -163,7 +168,7 @@ def get_help(update: Update, context: CallbackContext) -> int:
     return State.CHOOSING
 
 
-def ask_meeting(update: Update, context: CallbackContext) -> int:
+def ask_meeting(update: Update, context: CallbackContext) -> State:
     update.message.reply_text(
         text='Для продолжения необходимо заполнить анкету',
         reply_markup=ReplyKeyboardMarkup(
@@ -174,7 +179,7 @@ def ask_meeting(update: Update, context: CallbackContext) -> int:
     return State.STARTING_FORM
 
 
-def ask_name(update: Update, context: CallbackContext) -> int:
+def ask_name(update: Update, context: CallbackContext) -> State:
     update.message.reply_text(
         text='Введите имя',
         reply_markup=ReplyKeyboardMarkup([['Назад']]),
@@ -183,9 +188,9 @@ def ask_name(update: Update, context: CallbackContext) -> int:
     return State.ASKING_NAME
 
 
-def ask_age(update: Update, context: CallbackContext, redis_con) -> int:
+def ask_age(update: Update, context: CallbackContext, redis_con) -> State:
     create_questionnaire(
-        user_id=update.message.from_user['id'], 
+        user_id=update.message.from_user['id'],
         user_firstname=update.message.text,
         redis_con=redis_con,
     )
@@ -197,7 +202,7 @@ def ask_age(update: Update, context: CallbackContext, redis_con) -> int:
     return State.ASKING_AGE
 
 
-def ask_language(update: Update, context: CallbackContext, redis_con) -> int:
+def ask_language(update: Update, context: CallbackContext, redis_con) -> State:
     add_age_to_questionnaire(
         user_id=update.message.from_user['id'],
         user_age=update.message.text,
@@ -209,11 +214,10 @@ def ask_language(update: Update, context: CallbackContext, redis_con) -> int:
         reply_markup=ReplyKeyboardMarkup([['Назад']]),
     )
 
-
     return State.ASKING_LANGUAGE
 
 
-def get_person(update: Update, context: CallbackContext, redis_con) -> int:
+def get_person(update: Update, context: CallbackContext, redis_con) -> State:
     user_id = update.message.from_user['id']
     add_language_to_questionnaire(
         user_id=user_id,
@@ -239,7 +243,7 @@ def get_person(update: Update, context: CallbackContext, redis_con) -> int:
     return State.CHOOSING_PERSON
 
 
-def get_contact(update: Update, context: CallbackContext, redis_con) -> int:
+def get_contact(update: Update, context: CallbackContext, redis_con) -> State:
     context.bot.delete_message(
         update.message.chat.id,
         update.message.message_id,
@@ -249,13 +253,15 @@ def get_contact(update: Update, context: CallbackContext, redis_con) -> int:
         redis_con=redis_con,
     )
     update.message.reply_text(
-        text=users_with_same_language[random.randint(0, len(users_with_same_language) - 1)],
+        text=users_with_same_language[
+            random.randint(0, len(users_with_same_language) - 1)
+        ],
         reply_markup=ReplyKeyboardMarkup(main_keyboard),
     )
     return State.CHOOSING
 
 
-def get_schedule(update: Update, context: CallbackContext, redis_con) -> int:
+def get_schedule(update: Update, context: CallbackContext, redis_con) -> State:
     context.bot.delete_message(
         update.message.chat.id,
         update.message.message_id,
@@ -274,7 +280,7 @@ def get_schedule(update: Update, context: CallbackContext, redis_con) -> int:
     return State.CHOOSING
 
 
-def about_meetings(update: Update, context: CallbackContext) -> int:
+def about_meetings(update: Update, context: CallbackContext) -> State:
     update.message.reply_text(
         text=('Для начала заполните анкету, после этого мы дадаим '
               'вам логины пользователей со схожими языками программирования'),
@@ -284,7 +290,7 @@ def about_meetings(update: Update, context: CallbackContext) -> int:
     return State.STARTING_FORM
 
 
-def get_questions(update: Update, context: CallbackContext, redi_con) -> int:
+def get_questions(update: Update, context: CallbackContext, redi_con) -> State:
     context.bot.delete_message(
         update.message.chat.id,
         update.message.message_id,
@@ -298,7 +304,7 @@ def get_questions(update: Update, context: CallbackContext, redi_con) -> int:
     return State.CHOOSING
 
 
-def donate(update: Update, context: CallbackContext) -> int:
+def donate(update: Update, context: CallbackContext) -> State:
     update.message.reply_text(
         text='Тестовая банковская карта\n'
              'Номер карты: 6390 0200 0000 000003\n'
@@ -312,7 +318,7 @@ def donate(update: Update, context: CallbackContext) -> int:
     return State.GETTING_DONATE
 
 
-def send_invoice(update: Update, context: CallbackContext) -> int:
+def send_invoice(update: Update, context: CallbackContext) -> State:
     price = int(update.message.text)
 
     context.bot.send_invoice(
@@ -345,7 +351,11 @@ def got_payment(update, context):
     return State.CHOOSING
 
 
-def choose_speaker(update: Update, context: CallbackContext, redis_con) -> int:
+def choose_speaker(
+        update: Update,
+        context: CallbackContext,
+        redis_con
+) -> State:
     allowed_speakers = get_speakers_without_speach(
         redis_con=redis_con,
     )
@@ -358,7 +368,9 @@ def choose_speaker(update: Update, context: CallbackContext, redis_con) -> int:
     return State.CHOOSING_SPEAKER
 
 
-def choose_meeting_time(update: Update, context: CallbackContext, redis_con) -> int:
+def choose_meeting_time(
+        update: Update,
+        context: CallbackContext, redis_con) -> State:
     allowed_time = get_allowed_time(redis_con=redis_con)
     add_new_speaker(
         redis_con=redis_con,
@@ -375,10 +387,10 @@ def choose_meeting_time(update: Update, context: CallbackContext, redis_con) -> 
     return State.CHOOSING_MEETING_TIME
 
 
-def save_meeting(update: Update, context: CallbackContext, redis_con) -> int:
+def save_meeting(update: Update, context: CallbackContext, redis_con) -> State:
     meeting_time = update.message.text
     speaker_id = get_new_speaker(redis_con=redis_con).encode('utf-8')
-    
+
     print(meeting_time, '-------------')
     print(speaker_id, '---------------')
     redis_con.sadd(
@@ -402,7 +414,7 @@ def save_meeting(update: Update, context: CallbackContext, redis_con) -> int:
     return State.CHOOSING
 
 
-def edit_schedule(update: Update, context: CallbackContext) -> int:
+def edit_schedule(update: Update, context: CallbackContext) -> State:
     allowed_time = get_allowed_time(redis_con=redis_con)
     update.message.reply_text(
         text='Выберите доклад',
@@ -415,7 +427,7 @@ def edit_schedule(update: Update, context: CallbackContext) -> int:
     return State.EDITING_SCHEDULE
 
 
-def edit_meeting(update: Update, context: CallbackContext) -> int:
+def edit_meeting(update: Update, context: CallbackContext) -> State:
     #  перехват времени или названия доклада
     target = update.message.text
     #  сохранить например в bot_data или в redis
@@ -432,7 +444,7 @@ def edit_meeting(update: Update, context: CallbackContext) -> int:
     return State.EDITING_MEETING
 
 
-def edit_theme(update: Update, context: CallbackContext) -> int:
+def edit_theme(update: Update, context: CallbackContext) -> State:
     context.bot.delete_message(
         update.message.chat.id,
         update.message.message_id,
@@ -445,7 +457,7 @@ def edit_theme(update: Update, context: CallbackContext) -> int:
     return State.EDITING_THEME
 
 
-def save_theme(update: Update, context: CallbackContext) -> int:
+def save_theme(update: Update, context: CallbackContext) -> State:
     new_theme = update.message.text
     #  выступление тянем из context.bot_data
     update.message.reply_text(
@@ -456,7 +468,7 @@ def save_theme(update: Update, context: CallbackContext) -> int:
     return State.CHOOSING
 
 
-def delete_meeting(update: Update, context: CallbackContext) -> int:
+def delete_meeting(update: Update, context: CallbackContext) -> State:
     # удаление выступления из расписания
     # выступление тянем из context.bot_data
     update.message.reply_text(
@@ -467,7 +479,7 @@ def delete_meeting(update: Update, context: CallbackContext) -> int:
     return State.CHOOSING
 
 
-def get_notification(update: Update, context: CallbackContext) -> int:
+def get_notification(update: Update, context: CallbackContext) -> State:
     update.message.reply_text(
         text='Введите текст оповещения',
         reply_markup=ReplyKeyboardMarkup([['Назад']]),
@@ -476,7 +488,7 @@ def get_notification(update: Update, context: CallbackContext) -> int:
     return State.SEND_NOTIFICATION
 
 
-def send_notification(update: Update, context: CallbackContext) -> int:
+def send_notification(update: Update, context: CallbackContext) -> State:
     #  отправка сообщения всем
     update.message.reply_text(
         text='Оповещение отправлено',
@@ -486,7 +498,7 @@ def send_notification(update: Update, context: CallbackContext) -> int:
     return State.CHOOSING
 
 
-def get_donations(update: Update, context: CallbackContext) -> int:
+def get_donations(update: Update, context: CallbackContext) -> State:
     update.message.reply_text(
         text='@username - Сумма руб.',
         reply_markup=ReplyKeyboardMarkup(main_keyboard),
@@ -495,7 +507,7 @@ def get_donations(update: Update, context: CallbackContext) -> int:
     return State.CHOOSING
 
 
-def cancel(update: Update, context: CallbackContext) -> int:
+def cancel(update: Update, context: CallbackContext) -> State:
     return ConversationHandler.END
 
 
@@ -569,7 +581,8 @@ def main() -> None:
                     partial(
                         get_questions,
                         redis_con=r,
-                )),
+                    ),
+                ),
                 MessageHandler(
                     Filters.regex(r'Добавить докладчика'),
                     partial(
@@ -644,13 +657,15 @@ def main() -> None:
                     partial(
                         get_contact,
                         redis_con=r,
-                )),
+                    ),
+                ),
                 MessageHandler(
                     Filters.regex(r'Следующий'),
                     partial(
                         get_person,
                         redis_con=r,
-                )),
+                    ),
+                ),
             ],
             State.CHOOSING_SPEAKER: [
                 MessageHandler(Filters.regex(r'Назад'), show_main_keyboard),
